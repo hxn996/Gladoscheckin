@@ -33,7 +33,7 @@ if not cookies:
 else:
     for idx, cookie in enumerate(cookies, 1):
         # 随机延迟，防风控
-        time.sleep(random.uniform(1,3))
+        time.sleep(random.uniform(1,9))
 
         try:
             # 签到请求
@@ -113,3 +113,4 @@ if sckey:
         print("❌ 推送失败:", e)
 else:
     print("未设置 SENDKEY，跳过推送")
+
