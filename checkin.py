@@ -1,97 +1,115 @@
 import requests
 import json
 import os
-
+import time
+import random
 from pypushdeer import PushDeer
 
-# -------------------------------------------------------------------------------------------
-# github workflows
-# -------------------------------------------------------------------------------------------
-if __name__ == '__main__':
-    # pushdeer key 申请地址 https://www.pushdeer.com/product.html
-    sckey = os.environ.get("SENDKEY", "")
+# --------------------------------------------
+# 获取环境变量
+# --------------------------------------------
+sckey = os.environ.get("SENDKEY", "")
+cookies_env = os.environ.get("COOKIES", "")
+cookies = [c.strip() for c in cookies_env.split("&") if c.strip()]
 
-    # 推送内容
-    title = ""
-    success, fail, repeats = 0, 0, 0        # 成功账号数量 失败账号数量 重复签到账号数量
-    context = ""
+# 推送内容初始化
+title = ""
+success, fail, repeats = 0, 0, 0
+context = ""
 
-    # glados账号cookie 直接使用数组 如果使用环境变量需要字符串分割一下
-    cookies = os.environ.get("COOKIES", []).split("&")
-    if cookies[0] != "":
+# 签到地址和状态查询
+check_in_url = "https://glados.space/api/user/checkin"
+status_url = "https://glados.space/api/user/status"
 
-        check_in_url = "https://glados.space/api/user/checkin"        # 签到地址
-        status_url = "https://glados.space/api/user/status"          # 查看账户状态
+referer = 'https://glados.space/console/checkin'
+origin = "https://glados.space"
+useragent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/102.0.0.0 Safari/537.36"
 
-        referer = 'https://glados.space/console/checkin'
-        origin = "https://glados.space"
-        useragent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/102.0.0.0 Safari/537.36"
-        payload = {
-            'token': 'glados.one'
-        }
-        
-        for cookie in cookies:
-            checkin = requests.post(check_in_url, headers={'cookie': cookie, 'referer': referer, 'origin': origin,
-                                    'user-agent': useragent, 'content-type': 'application/json;charset=UTF-8'}, data=json.dumps(payload))
-            state = requests.get(status_url, headers={
-                                'cookie': cookie, 'referer': referer, 'origin': origin, 'user-agent': useragent})
+payload = {'token': 'glados.one'}
 
-            message_status = ""
+if not cookies:
+    print("未找到 COOKIES！请检查 Secrets 设置")
+    title = "# 未找到 cookies!"
+else:
+    for idx, cookie in enumerate(cookies, 1):
+        # 随机延迟，防风控
+        time.sleep(random.uniform(1,3))
+
+        try:
+            # 签到请求
+            checkin = requests.post(
+                check_in_url,
+                headers={
+                    'cookie': cookie,
+                    'referer': referer,
+                    'origin': origin,
+                    'user-agent': useragent,
+                    'content-type': 'application/json;charset=UTF-8'
+                },
+                data=json.dumps(payload),
+                timeout=10
+            )
+
+            # 查询账号状态
+            state = requests.get(
+                status_url,
+                headers={
+                    'cookie': cookie,
+                    'referer': referer,
+                    'origin': origin,
+                    'user-agent': useragent
+                },
+                timeout=10
+            )
+
             points = 0
+            message_status = ""
             message_days = ""
-            
-            
-            if checkin.status_code == 200:
-                # 解析返回的json数据
-                result = checkin.json()     
-                # 获取签到结果
-                check_result = result.get('message')
-                points = result.get('points')
+            email = ""
 
-                # 获取账号当前状态
-                result = state.json()
-                # 获取剩余时间
-                leftdays = int(float(result['data']['leftDays']))
-                # 获取账号email
-                email = result['data']['email']
-                
-                print(check_result)
+            if checkin.status_code == 200 and state.status_code == 200:
+                result = checkin.json()
+                check_result = result.get('message', '')
+                points = result.get('points', 0)
+
+                state_result = state.json()
+                leftdays = int(float(state_result['data'].get('leftDays', 0)))
+                email = state_result['data'].get('email', 'unknown')
+
                 if "Checkin! Got" in check_result:
                     success += 1
-                    message_status = "签到成功，会员点数 + " + str(points)
+                    message_status = f"✅ 签到成功，会员点数 +{points}"
                 elif "Checkin Repeats!" in check_result:
                     repeats += 1
-                    message_status = "重复签到，明天再来"
+                    message_status = "⚠ 重复签到，明天再来"
                 else:
                     fail += 1
-                    message_status = "签到失败，请检查..."
-
-                if leftdays is not None:
-                    message_days = f"{leftdays} 天"
-                else:
-                    message_days = "error"
+                    message_status = "❌ 签到失败，请检查 Cookie"
             else:
-                email = ""
-                message_status = "签到请求URL失败, 请检查..."
-                message_days = "error"
+                fail += 1
+                message_status = "❌ 请求失败或 Cookie 无效"
 
-            context += "账号: " + email + ", P: " + str(points) +", 剩余: " + message_days + " | "
+            message_days = f"{leftdays} 天" if 'leftdays' in locals() else "error"
+            context += f"账号 {idx}: {email}, {message_status}, 剩余: {message_days}, 点数: {points}\n"
 
-        # 推送内容 
-        title = f'Glados, 成功{success},失败{fail},重复{repeats}'
-        print("Send Content:" + "\n", context)
-        
-    else:
-        # 推送内容 
-        title = f'# 未找到 cookies!'
+        except Exception as e:
+            fail += 1
+            context += f"账号 {idx}: 异常 {e}\n"
 
-    print("sckey:", sckey)
-    print("cookies:", cookies)
-    
-    # 推送消息
-    # 未设置 sckey 则不进行推送
-    if not sckey:
-        print("Not push")
-    else:
-        pushdeer = PushDeer(pushkey=sckey) 
+    # 汇总标题
+    title = f"Glados 签到结果: 成功 {success}, 失败 {fail}, 重复 {repeats}"
+
+# 推送
+print("=== 推送内容 ===")
+print(title)
+print(context)
+
+if sckey:
+    try:
+        pushdeer = PushDeer(pushkey=sckey)
         pushdeer.send_text(title, desp=context)
+        print("✅ 推送成功")
+    except Exception as e:
+        print("❌ 推送失败:", e)
+else:
+    print("未设置 SENDKEY，跳过推送")
