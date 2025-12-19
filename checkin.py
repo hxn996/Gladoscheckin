@@ -14,7 +14,7 @@ cookies = [c.strip() for c in cookies_env.split("&") if c.strip()]
 
 # 推送内容初始化
 title = ""
-success, fail, repeats, invalid = 0, 0, 0, 0
+success, fail, repeats = 0, 0, 0
 context = ""
 
 # 签到地址和状态查询
@@ -32,8 +32,8 @@ if not cookies:
     title = "# 未找到 cookies!"
 else:
     for idx, cookie in enumerate(cookies, 1):
-        # 随机延迟 1~3 秒，防风控
-        time.sleep(random.uniform(1,9)
+        # 随机延迟，防风控
+        time.sleep(random.uniform(1,9))
 
         try:
             # 签到请求
@@ -65,44 +65,39 @@ else:
             points = 0
             message_status = ""
             message_days = ""
-            email = "unknown"
+            email = ""
 
-            # 处理签到返回
-            check_result = checkin.json().get('message', '')
+            if checkin.status_code == 200 and state.status_code == 200:
+                result = checkin.json()
+                check_result = result.get('message', '')
+                points = result.get('points', 0)
 
-            state_result = state.json()
-            data = state_result.get('data', None)
+                state_result = state.json()
+                leftdays = int(float(state_result['data'].get('leftDays', 0)))
+                email = state_result['data'].get('email', 'unknown')
 
-            if not data:
-                invalid += 1
-                context += f"账号 {idx}: ❌ Cookie 无效或接口异常\n"
-                continue
-
-            # 获取账号信息
-            leftdays = int(float(data.get('leftDays', 0)))
-            email = data.get('email', 'unknown')
-
-            points = checkin.json().get('points', 0)
-
-            if "Checkin! Got" in check_result:
-                success += 1
-                message_status = f"✅ 签到成功，会员点数 +{points}"
-            elif "Checkin Repeats!" in check_result:
-                repeats += 1
-                message_status = "⚠ 重复签到，明天再来"
+                if "Checkin! Got" in check_result:
+                    success += 1
+                    message_status = f"✅ 签到成功，会员点数 +{points}"
+                elif "Checkin Repeats!" in check_result:
+                    repeats += 1
+                    message_status = "⚠ 重复签到，明天再来"
+                else:
+                    fail += 1
+                    message_status = "❌ 签到失败，请检查 Cookie"
             else:
                 fail += 1
-                message_status = "❌ 签到失败，请检查 Cookie"
+                message_status = "❌ 请求失败或 Cookie 无效"
 
-            message_days = f"{leftdays} 天" if leftdays is not None else "error"
+            message_days = f"{leftdays} 天" if 'leftdays' in locals() else "error"
             context += f"账号 {idx}: {email}, {message_status}, 剩余: {message_days}, 点数: {points}\n"
 
         except Exception as e:
             fail += 1
-            context += f"账号 {idx}: ❌ 异常 {e}\n"
+            context += f"账号 {idx}: 异常 {e}\n"
 
     # 汇总标题
-    title = f"Glados 签到结果: 成功 {success}, 失败 {fail}, 重复 {repeats}, 无效 {invalid}"
+    title = f"Glados 签到结果: 成功 {success}, 失败 {fail}, 重复 {repeats}"
 
 # 推送
 print("=== 推送内容 ===")
