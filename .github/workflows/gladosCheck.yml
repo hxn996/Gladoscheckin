@@ -8,7 +8,7 @@ on:
       - 'README.md'
       - 'imgs/'
   schedule:
-    # UTC 时间，设置为北京时间每天 9:00 => UTC 1:00
+    # UTC 时间，北京时间 9:00 => UTC 1:00
     - cron: '0 1 * * *'
   watch:
     types: started
